@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import { nanoid } from "nanoid";
+import jwt from "jsonwebtoken";
+import cors from "cors";
 
 // Schema import
 import User from "./Schema/User.js";
@@ -16,6 +18,7 @@ let emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
 let passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{6,20}$/;
 
 server.use(express.json());
+server.use(cors());
 
 // MongoDB connection
 mongoose
@@ -27,7 +30,13 @@ mongoose
 
 // Function to format data to send to the client
 const formatDataSend = (user) => {
+  const access_token = jwt.sign(
+    { id: user._id },
+    process.env.SECRET_ACCESS_KEY
+  );
+
   return {
+    access_token,
     profile_img: user.personal_info.profile_img,
     username: user.personal_info.username,
     fullname: user.personal_info.fullname,
@@ -55,7 +64,8 @@ const generateUsername = async (email) => {
 };
 
 // Signup endpoint
-server.post("/signup", (req, res) => {
+server.post("/signup", async (req, res) => {
+  console.log(req.body)
   let { fullname, email, password } = req.body;
 
   // Fullname validation
@@ -78,34 +88,63 @@ server.post("/signup", (req, res) => {
     });
   }
 
-  // Hash the password
-  bcrypt.hash(password, 10, async (err, hashed_password) => {
-    if (err) {
-      return res.status(500).json({ error: "Error hashing password" });
+  try {
+    // Check if email already exists
+    const existingUser = await User.findOne({ "personal_info.email": email });
+    if (existingUser) {
+      return res.status(409).json({ error: "Email already exists" });
     }
 
-    try {
-      // Generate unique username
-      let username = await generateUsername(email);
+    // Hash the password
+    const hashed_password = await bcrypt.hash(password, 10);
 
-      // Create new user
-      let user = new User({
-        personal_info: { fullname, email, password: hashed_password, username },
-      });
+    // Generate unique username
+    const username = await generateUsername(email);
 
-      // Save user to database
-      user.save().then((u) => {
-        return res.status(200).json(formatDataSend(u));
-      });
-    } catch (err) {
-      // Handle duplicate email error
-      if (err.code === 11000) {
-        return res.status(409).json({ error: "Email already exists" });
+    // Create new user
+    const user = new User({
+      personal_info: { fullname, email, password: hashed_password, username },
+    });
+
+    // Save user to database
+    await user.save();
+
+    // Send response to client
+    return res.status(200).json(formatDataSend(user));
+  } catch (err) {
+    // Handle general errors
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+server.post("/signin", (req, res) => {
+  const { email, password } = req.body; // Destructure as an object
+
+  User.findOne({ "personal_info.email": email })
+    .then((user) => {
+      if (!user) {
+        return res.status(404).json({ error: "email not found" });
       }
-      // Handle general errors
-      return res.status(500).json({ error: err.message });
-    }
-  });
+
+      // check password
+      bcrypt.compare(password, user.personal_info.password, (err, result) => {
+        if (err) {
+          return res
+            .status(403)
+            .json({ error: "error occured during  signin plesaeu try again" });
+        }
+        if (!result) {
+          return res.status(403).json({
+            error: "Invalid password",
+          });
+        } else {
+          return res.status(200).json(formatDataSend(user));
+        }
+      });
+    })
+    .catch((err) => {
+      return res.status(500).json({ error: "server error" });
+    });
 });
 
 // Start server

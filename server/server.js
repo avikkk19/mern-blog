@@ -5,6 +5,9 @@ import bcrypt from "bcrypt";
 import { nanoid } from "nanoid";
 import jwt from "jsonwebtoken";
 import cors from "cors";
+import admin from "firebase-admin";
+import serviceAccountKey from "./mern-blog-60048-firebase-adminsdk-wet16-7d1c3c398d.json" assert { type: "json" };
+import { getAuth } from "firebase-admin/auth";
 
 // Schema import
 import User from "./Schema/User.js";
@@ -12,6 +15,10 @@ import User from "./Schema/User.js";
 dotenv.config(); // Load environment variables from .env
 const server = express();
 let PORT = 3000;
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccountKey),
+});
 
 // Regex for email and password validation
 let emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
@@ -62,10 +69,17 @@ const generateUsername = async (email) => {
 
   return username;
 };
+// for google auth
+server.use((req, res, next) => {
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  next();
+});
+
 
 // Signup endpoint
 server.post("/signup", async (req, res) => {
-  console.log(req.body)
+  console.log(req.body);
   let { fullname, email, password } = req.body;
 
   // Fullname validation
@@ -118,7 +132,7 @@ server.post("/signup", async (req, res) => {
 });
 
 server.post("/signin", (req, res) => {
-  const { email, password } = req.body; // Destructure as an object
+  const { email, password } = req.body;
 
   User.findOne({ "personal_info.email": email })
     .then((user) => {
@@ -126,24 +140,93 @@ server.post("/signin", (req, res) => {
         return res.status(404).json({ error: "email not found" });
       }
 
-      // check password
-      bcrypt.compare(password, user.personal_info.password, (err, result) => {
-        if (err) {
+      // Check if user has a Google-authenticated account
+      if (!user.google_auth) {
+        // Compare password if it's not a Google-authenticated account
+        bcrypt.compare(password, user.personal_info.password, (err, result) => {
+          if (err) {
+            return res.status(403).json({
+              error: "Error occurred during signin, please try again",
+            });
+          }
+          if (!result) {
+            return res.status(403).json({
+              error: "Invalid password",
+            });
+          } else {
+            return res.status(200).json(formatDataSend(user));
+          }
+        });
+      } else {
+        // If user has logged in with Google, return an error
+        return res.status(403).json({
+          error:
+            "This account is already linked with Google, please log in using Google",
+        });
+      }
+    })
+    .catch((err) => {
+      console.error("Signin Error: ", err); // Log the error for debugging
+      return res.status(500).json({ error: "Server error" });
+    });
+});
+
+server.post("/google-auth", async (req, res) => {
+  let { access_token } = req.body;
+
+  getAuth()
+    .verifyIdToken(access_token)
+    .then(async (decodedUser) => {
+      let { email, name, picture } = decodedUser;
+      picture = picture.replace("s96-c", "s384-c");
+
+      let user = await User.findOne({ "personal_info.email": email })
+        .select("personal_info.fullname personal_info.profile_img google_auth")
+        .then((u) => {
+          return u || null;
+        })
+        .catch((err) => {
+          return res.status(403).json({ error: err.message });
+        });
+
+      if (user) {
+        if (!user.google_auth) {
           return res
             .status(403)
-            .json({ error: "error occured during  signin plesaeu try again" });
-        }
-        if (!result) {
-          return res.status(403).json({
-            error: "Invalid password",
-          });
+            .json({ error: "This user is not Google authenticated" });
         } else {
           return res.status(200).json(formatDataSend(user));
         }
-      });
+      } else {
+        let username = await generateUsername(email);
+
+        user = new User({
+          personal_info: {
+            fullname: name,
+            email,
+           
+            username,
+          },
+          google_auth: true,
+        });
+
+        await user
+          .save()
+          .then((u) => {
+            user = u;
+          })
+          .catch((err) => {
+            return res.status(500).json({ error: "Server error" });
+          });
+
+        return res.status(200).json(formatDataSend(user));
+      }
     })
     .catch((err) => {
-      return res.status(500).json({ error: "server error" });
+      console.error("google Auth error :",err)
+      return res
+        .status(500)
+        .json({ error: "Authentication error, try another Google account" });
     });
 });
 

@@ -1,11 +1,32 @@
 import logo from "../imgs/logo.png";
 import { Link, Outlet } from "react-router-dom";
 import { UserContext } from "../App";
-import { useContext, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import UserNavigationPannel from "./UserNavigation";
+import { useRef } from "react";
 
 const Navbar = () => {
   const [searchBoxVisibility, setSearchBoxVisibility] = useState(false);
+  const [userNavPannel, setUserNavPannel] = useState(false);
+  const userNavRef = useRef(null); // Ref to track user navigation panel
+
+  const handleUserNavPannel = () => {
+    setUserNavPannel((currentVal) => !currentVal);
+  };
+
+  const handleClickOutside = (event) => {
+    if (userNavRef.current && !userNavRef.current.contains(event.target)) {
+      setUserNavPannel(false); // Close user navigation panel if clicked outside of the div
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const {
     userAuth,
     userAuth: { access_token, profile_img },
@@ -50,8 +71,11 @@ const Navbar = () => {
                 </button>
               </Link>
 
-              <div className="relative">
-                <button className="w-12 h-12 mt-1">
+              <div className="relative" ref={userNavRef}>
+                <button
+                  className="w-12 h-12 mt-1"
+                  onClick={handleUserNavPannel}
+                >
                   {profile_img ? (
                     <img
                       src={profile_img}
@@ -61,10 +85,10 @@ const Navbar = () => {
                   ) : (
                     <span className="w-full h-full bg-gray-300 rounded-full flex items-center justify-center">
                       No Image
-                    </span> // Fallback for when no profile image is available
+                    </span>
                   )}
                 </button>
-                <UserNavigationPannel/>
+                {userNavPannel ? <UserNavigationPannel /> : ""}
               </div>
             </>
           ) : (

@@ -7,10 +7,14 @@ import { Toaster, toast } from "react-hot-toast";
 import axios from "axios";
 import { storeInSession } from "../common/session";
 import { UserContext } from "../App";
+import { authWithGoogle } from "../common/Firebase";
 
 const UserAuthForm = ({ type }) => {
   const serverRoute = type === "signin" ? "/signin" : "/signup";
-  let {userAuth:{access_token},setUserAuth} = useContext(UserContext)
+  let {
+    userAuth: { access_token },
+    setUserAuth,
+  } = useContext(UserContext);
   const userAuthThroughServer = (serverRoute, formData) => {
     axios
       .post(import.meta.env.VITE_SERVER_DOMAIN + serverRoute, formData)
@@ -59,11 +63,29 @@ const UserAuthForm = ({ type }) => {
 
     userAuthThroughServer(serverRoute, formData);
   };
+  //  google authhhhhhhhhhhhhhh
+  const handleGoogleAuth = (e) => {
+    e.preventDefault();
 
-  return (
-    access_token ? 
-    <Navigate to="/"/>:
+    authWithGoogle()
+      .then((user) => {
+        let serverRoute = "/google-auth";
+        let formData = {
+          access_token: user.accessToken,
+        };
 
+        // Call the server for Google authentication
+        userAuthThroughServer(serverRoute, formData);
+      })
+      .catch((err) => {
+        toast.error("Trouble signing in through Google");
+        console.log(err);
+      });
+  };
+
+  return access_token ? (
+    <Navigate to="/" />
+  ) : (
     <AnimationWrapper keyValue={type}>
       <section className="h-cover flex items-center justify-center">
         <Toaster />
@@ -102,7 +124,10 @@ const UserAuthForm = ({ type }) => {
           <div className="relative w-full flex items-center gap-2 my-10 opacity-10 uppercase text-black font-bold ">
             <h1 className="w-1/2 border-black" />
           </div>
-          <button className="btn-dark flex items-center justify-center gap-4 w-[90%] center">
+          <button
+            className="btn-dark flex items-center justify-center gap-4 w-[90%] center"
+            onClick={handleGoogleAuth}
+          >
             <img src={googleIcon} alt="google " className="w-5" />
             continue with google
           </button>

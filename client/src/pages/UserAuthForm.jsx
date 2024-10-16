@@ -57,7 +57,7 @@ const UserAuthForm = ({ type }) => {
     // Password validation
     if (!passwordRegex.test(password)) {
       return toast.error(
-        "Password must be between 6 and 20 characters and contain at least one lowercase letter, one uppercase letter, and one digit."
+        "Password must be betweenn 6 and 20 characters and contain at least one lowercase letter, one uppercase letter, and one digit."
       );
     }
 
